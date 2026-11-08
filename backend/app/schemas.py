@@ -1,4 +1,8 @@
 ﻿from pydantic import BaseModel, Field
 
 class AnalyzeRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=10000)
+    text: str = Field(
+        min_length=1,
+        max_length=10000,
+        description="Message or call transcript to analyze"
+    )

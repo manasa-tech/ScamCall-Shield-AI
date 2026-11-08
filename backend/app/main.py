@@ -1,4 +1,6 @@
-﻿from fastapi import FastAPI
+﻿from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.schemas import AnalyzeRequest
@@ -10,30 +12,41 @@ from app.database.db import (
     get_dashboard_stats
 )
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    initialize_database()
+    yield
+
 app = FastAPI(
     title="ScamCall Shield AI",
-    description="AI-assisted scam detection API",
-    version="1.0.0"
+    description="Scam message and call transcript risk analysis API",
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8501"],
-    allow_methods=["*"],
-    allow_headers=["*"]
+    allow_origins=[
+        "http://localhost:8501",
+        "http://127.0.0.1:8501"
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"]
 )
-
-@app.on_event("startup")
-def startup():
-    initialize_database()
 
 @app.get("/")
 def home():
-    return {"message": "ScamCall Shield AI backend is running"}
+    return {
+        "message": "ScamCall Shield AI backend is running"
+    }
 
 @app.get("/api/health")
 def health():
-    return {"status": "healthy"}
+    return {
+        "status": "healthy",
+        "service": "ScamCall Shield AI"
+    }
 
 @app.post("/api/analyze/message")
 def analyze_message(request: AnalyzeRequest):
