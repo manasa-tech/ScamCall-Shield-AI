@@ -1,69 +1,81 @@
-﻿from contextlib import asynccontextmanager
-
-from fastapi import FastAPI
+﻿from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.schemas import AnalyzeRequest
-from app.services.detector import analyze_text
-from app.database.db import (
-    initialize_database,
-    save_scan,
-    get_history,
-    get_dashboard_stats
-)
+from .schemas import ScanRequest, ScanResponse
+from .services.scam_detector import detect_scam
+from .database.connection import initialize_database
+from .database.models import save_scan, get_scan_history
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    initialize_database()
-    yield
 
 app = FastAPI(
-    title="ScamCall Shield AI",
-    description="Scam message and call transcript risk analysis API",
-    version="1.0.0",
-    lifespan=lifespan
+    title="ScamShield AI",
+    description="Scam and phishing detection API",
+    version="1.0.0"
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8501",
-        "http://127.0.0.1:8501"
-    ],
+    allow_origins=["http://localhost:8501"],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"]
+    allow_methods=["*"],
+    allow_headers=["*"]
 )
+
+
+@app.on_event("startup")
+def startup():
+    initialize_database()
+
 
 @app.get("/")
 def home():
     return {
-        "message": "ScamCall Shield AI backend is running"
+        "message": "ScamShield AI API is running",
+        "status": "online"
     }
 
-@app.get("/api/health")
+
+@app.get("/health")
 def health():
-    return {
-        "status": "healthy",
-        "service": "ScamCall Shield AI"
-    }
+    return {"status": "healthy"}
 
-@app.post("/api/analyze/message")
-def analyze_message(request: AnalyzeRequest):
-    result = analyze_text(request.text)
-    save_scan("message", result)
-    return result
 
-@app.post("/api/analyze/call")
-def analyze_call(request: AnalyzeRequest):
-    result = analyze_text(request.text)
-    save_scan("call", result)
-    return result
+@app.post("/api/detect", response_model=ScanResponse)
+def scan_content(request: ScanRequest):
+
+    content = request.content.strip()
+
+    if request.content_type == "url":
+        if not content.startswith(("http://", "https://")):
+            content = "http://" + content
+
+    try:
+        result = detect_scam(
+            content,
+            request.content_type
+        )
+
+        save_scan(
+            content,
+            request.content_type,
+            result
+        )
+
+        return result
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Detection failed"
+        )
+
 
 @app.get("/api/history")
 def history():
-    return get_history()
-
-@app.get("/api/dashboard")
-def dashboard():
-    return get_dashboard_stats()
+    try:
+        return get_scan_history()
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to retrieve scan history"
+        )
